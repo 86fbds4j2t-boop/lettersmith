@@ -50,6 +50,9 @@ textarea { width:100%; min-height:70px; background:#14161a; color:var(--txt); bo
     <div>
       <label>Buchstaben-Zusammenfassung (Lücken-Toleranz): <span id="v_gap">0.05</span></label>
       <input type="range" id="gap_ratio" min="0.02" max="0.5" step="0.01" value="0.05">
+      <label style="display:flex;align-items:center;gap:8px;margin-top:14px;">
+        <input type="checkbox" id="invert" style="width:auto;"> Helle Schrift auf dunklem Grund (z. B. graviert in Stein)
+      </label>
       <p id="status">Noch kein Bild geladen.</p>
       <button id="reanalyze" class="sec" disabled>Neu analysieren</button>
     </div>
@@ -119,6 +122,7 @@ function analyze(file) {
   const fd = new FormData();
   fd.append('image', file);
   ranges.forEach(r => fd.append(r, $(r).value));
+  if ($('invert').checked) fd.append('invert', 'on');
   fetch('/upload', {method:'POST', body:fd})
     .then(r => r.json())
     .then(d => {

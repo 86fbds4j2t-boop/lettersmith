@@ -28,11 +28,17 @@ def index():
     return render_template("index.html")
 
 
-def _binarize(img_bgr, blocksize, c):
+def _binarize(img_bgr, blocksize, c, invert=False):
     gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
     gray = cv2.medianBlur(gray, 3)
     bs = max(3, int(blocksize) // 2 * 2 + 1)
     # pixels > (local mean - c) become white (letters)
+    if invert:
+        binary = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                       cv2.THRESH_BINARY, bs, float(c))
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+        binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
+        return binary
     binary = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
                                   cv2.THRESH_BINARY_INV, bs, float(c))
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
@@ -117,17 +123,23 @@ def _group_glyphs(contour_list, gap_ratio):
     return merged
 
 
-def _extract_glyphs(img_bgr, blocksize, c, epsilon, gap_ratio, min_area):
-    binary = _binarize(img_bgr, blocksize, c)
+def _extract_glyphs(img_bgr, blocksize, c, epsilon, gap_ratio, min_area,
+                    invert=False):
+    binary = _binarize(img_bgr, blocksize, c, invert)
     contour_list = []
     contours, hierarchy = cv2.findContours(
         binary, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE)
     if hierarchy is None:
         return [], binary
     hierarchy = hierarchy[0]
+    img_w = binary.shape[1]
+    img_h = binary.shape[0]
     for i, cnt in enumerate(contours):
         area = cv2.contourArea(cnt)
         if area < min_area:
+            continue
+        x, y, w, h = cv2.boundingRect(cnt)
+        if hierarchy[i][3] == -1 and (w > img_w * 0.4 or h > img_h * 0.4):
             continue
         contour_list.append((i, cnt, hierarchy[i][3], area))
     glyphs = _group_glyphs(contour_list, gap_ratio)
@@ -188,9 +200,10 @@ def upload():
     params = {k: float(request.form.get(k, v)) for k, v in {
         "blocksize": 31, "c": 10, "epsilon": 0.002, "gap_ratio": 0.05,
         "min_area": 40}.items()}
+    invert = request.form.get("invert") in ("on", "1", "true")
     glyphs, binary = _extract_glyphs(
         img, int(params["blocksize"]), params["c"], params["epsilon"],
-        params["gap_ratio"], int(params["min_area"]))
+        params["gap_ratio"], int(params["min_area"]), invert)
     sid = uuid.uuid4().hex[:12]
     SESSIONS[sid] = {"glyphs": glyphs, "labels": {}}
     for g in glyphs:

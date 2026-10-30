@@ -37,6 +37,11 @@ Dann im Browser öffnen: http://127.0.0.1:5000
 2. **Glyphen beschriften**: unter jede erkannte Form den Buchstaben eintragen.
    Fehlende Buchstaben im Zieltext werden übersprungen (Meldung siehe Export).
    Optional eine Form mit `space` beschriften für echte Leerzeichenbreiten.
+**Helle Schrift auf dunklem Grund** (z. B. gravierte Buchstaben in Stein,
+Drahtbuchstaben vor dunkler Wand): das Häkchen „Helle Schrift auf dunklem
+Grund" setzen. Bei grobkörnigem Material (Granit o. Ä.) hilft zusätzlich:
+Mindestfläche hochdrehen und Kantenschärfe erhöhen.
+
 3. **Text bauen**: Zieltext eingeben (Zeilenumbrüche erlaubt), Größe,
    Laufweite und Zeilenabstand einstellen → *Text als SVG exportieren*.
    Alternativ: *Alle Glyphen als SVG* (Referenzblatt).

@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Lettersmith – Foto → Vektor-Schrift</title>
+<style>
+:root { --bg:#14161a; --panel:#1d2026; --acc:#4da3ff; --txt:#e8eaed; }
+* { box-sizing:border-box; }
+body { font-family:system-ui,sans-serif; background:var(--bg); color:var(--txt); margin:0; padding:24px; }
+h1 { font-size:22px; margin:0 0 4px; }
+p.sub { color:#9aa0a6; margin:0 0 20px; font-size:14px; }
+.panel { background:var(--panel); border-radius:12px; padding:16px; margin-bottom:20px; }
+label { font-size:13px; color:#bdc1c6; display:block; margin:8px 0 2px; }
+input[type=range] { width:100%; }
+.row { display:flex; gap:24px; flex-wrap:wrap; }
+.row > div { flex:1; min-width:260px; }
+button { background:var(--acc); color:#0b1220; border:none; border-radius:8px; padding:10px 18px; font-weight:600; cursor:pointer; margin-top:10px; }
+button.sec { background:#2a2e35; color:var(--txt); }
+button:disabled { opacity:.4; cursor:default; }
+#dropzone { border:2px dashed #444; border-radius:12px; padding:30px; text-align:center; color:#9aa0a6; cursor:pointer; }
+#dropzone.drag { border-color:var(--acc); color:var(--acc); }
+#glyphs { display:flex; flex-wrap:wrap; gap:10px; margin-top:14px; }
+.glyph { background:#2a2e35; border-radius:8px; padding:6px; text-align:center; width:92px; }
+.glyph img { width:80px; height:80px; object-fit:contain; background:#fff; border-radius:4px; }
+.glyph input { width:80px; margin-top:4px; text-align:center; background:#14161a; color:var(--txt); border:1px solid #444; border-radius:4px; padding:4px; font-size:15px; }
+textarea { width:100%; min-height:70px; background:#14161a; color:var(--txt); border:1px solid #444; border-radius:8px; padding:10px; font-size:16px; }
+.hidden { display:none; }
+#status { font-size:13px; color:#9aa0a6; margin-top:8px; }
+.err { color:#ff6b6b; }
+</style>
+</head>
+<body>
+<h1>Lettersmith</h1>
+<p class="sub">Foto hochladen → Buchstaben-Umrisse werden als Vektoren erkannt → beschriften → neuen Text daraus bauen. SVG-Export für Affinity Designer 2.</p>
+
+<div class="panel">
+  <div id="dropzone">📷 Foto hierher ziehen oder klicken (JPG/PNG)</div>
+  <input type="file" id="file" accept="image/*" class="hidden">
+  <div class="row">
+    <div>
+      <label>Kantenschärfe (Blockgröße): <span id="v_bs">31</span></label>
+      <input type="range" id="blocksize" min="11" max="91" step="2" value="31">
+      <label>Schwellen-Offset: <span id="v_c">10</span></label>
+      <input type="range" id="c" min="2" max="40" value="10">
+      <label>Glättung (Pfad-Vereinfachung): <span id="v_eps">0.002</span></label>
+      <input type="range" id="epsilon" min="0" max="0.02" step="0.001" value="0.002">
+      <label>Mindestfläche (Rauschen): <span id="v_ma">40</span></label>
+      <input type="range" id="min_area" min="10" max="500" step="10" value="40">
+    </div>
+    <div>
+      <label>Buchstaben-Zusammenfassung (Lücken-Toleranz): <span id="v_gap">0.05</span></label>
+      <input type="range" id="gap_ratio" min="0.02" max="0.5" step="0.01" value="0.05">
+      <label style="display:flex;align-items:center;gap:8px;margin-top:14px;">
+        <input type="checkbox" id="invert" style="width:auto;"> Helle Schrift auf dunklem Grund (z. B. graviert in Stein)
+      </label>
+      <p id="status">Noch kein Bild geladen.</p>
+      <button id="reanalyze" class="sec" disabled>Neu analysieren</button>
+    </div>
+  </div>
+</div>
+
+<div class="panel hidden" id="glyphPanel">
+  <h3 style="margin:0 0 8px;">Schritt 2: Glyphen beschriften</h3>
+  <p style="font-size:13px;color:#9aa0a6;margin:0 0 4px;">Trage unter jede erkannte Form ein, welcher Buchstabe es ist. Für den Text-Bau wird jeder Buchstabe einmal benötigt. Mehrfachformen des selben Buchstabens sind erlaubt (die erste gewinnt). Leerzeichen-Form optional mit „space“ beschriften.</p>
+  <div id="glyphs"></div>
+  <button id="saveLabels" class="sec">Beschriftung speichern</button>
+</div>
+
+<div class="panel hidden" id="composePanel">
+  <h3 style="margin:0 0 8px;">Schritt 3: Text bauen & exportieren</h3>
+  <label>Text (Zeilenumbrüche erlaubt):</label>
+  <textarea id="text">Hallo Welt</textarea>
+  <div class="row" style="margin-top:10px;">
+    <div>
+      <label>Größe (px): <span id="v_size">100</span></label>
+      <input type="range" id="size" min="20" max="400" step="10" value="100">
+      <label>Laufweite: <span id="v_sp">1.0</span></label>
+      <input type="range" id="spacing" min="0.5" max="2.5" step="0.05" value="1">
+    </div>
+    <div>
+      <label>Zeilenabstand: <span id="v_ls">1.4</span></label>
+      <input type="range" id="line_spacing" min="1" max="3" step="0.1" value="1.4">
+      <button id="composeBtn">Text als SVG exportieren</button>
+      <button id="fontBtn" class="sec">Alle Glyphen als SVG exportieren</button>
+    </div>
+  </div>
+  <p id="missing" style="font-size:13px;color:#ffb84d;"></p>
+  <div id="preview" style="margin-top:14px;"></div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const drop = $('dropzone'), fileInput = $('file');
+let session = null, lastFile = null;
+
+const ranges = ['blocksize','c','epsilon','min_area','gap_ratio'];
+ranges.forEach(r => $(r).addEventListener('input', () => {
+  $('v_'+r).textContent = $(r).value;
+}));
+['size','spacing','line_spacing'].forEach(r => $(r).addEventListener('input', () => {
+  $('v_'+r).textContent = $(r).value;
+  updatePreview();
+}));
+
+drop.onclick = () => fileInput.click();
+fileInput.onchange = () => { if (fileInput.files[0]) handle(fileInput.files[0]); };
+drop.ondragover = e => { e.preventDefault(); drop.classList.add('drag'); };
+drop.ondragleave = () => drop.classList.remove('drag');
+drop.ondrop = e => {
+  e.preventDefault(); drop.classList.remove('drag');
+  if (e.dataTransfer.files[0]) handle(e.dataTransfer.files[0]);
+};
+
+function handle(file) {
+  lastFile = file;
+  analyze(file);
+}
+
+function analyze(file) {
+  $('status').textContent = 'Analysiere…';
+  $('status').classList.remove('err');
+  const fd = new FormData();
+  fd.append('image', file);
+  ranges.forEach(r => fd.append(r, $(r).value));
+  if ($('invert').checked) fd.append('invert', 'on');
+  fetch('/upload', {method:'POST', body:fd})
+    .then(r => r.json())
+    .then(d => {
+      if (d.error) { $('status').textContent = d.error; $('status').classList.add('err'); return; }
+      session = d.session;
+      $('status').textContent = d.count + ' Formen erkannt.';
+      $('reanalyze').disabled = false;
+      renderGlyphs(d.glyphs);
+    })
+    .catch(e => { $('status').textContent = 'Fehler: ' + e; $('status').classList.add('err'); });
+}
+
+$('reanalyze').onclick = () => { if (lastFile) analyze(lastFile); };
+
+function renderGlyphs(glyphs) {
+  $('glyphPanel').classList.remove('hidden');
+  const box = $('glyphs');
+  box.innerHTML = '';
+  glyphs.forEach(g => {
+    const el = document.createElement('div');
+    el.className = 'glyph';
+    el.innerHTML = `<img src="${g.preview}"><input maxlength="8" data-id="${g.id}" placeholder="?">`;
+    box.appendChild(el);
+  });
+}
+
+$('saveLabels').onclick = () => {
+  const labels = {};
+  document.querySelectorAll('#glyphs input').forEach(i => {
+    if (i.value.trim()) labels[i.dataset.id] = i.value.trim();
+  });
+  fetch('/label', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({session, labels})
+  }).then(r => r.json()).then(d => {
+    if (d.error) { $('missing').textContent = d.error; return; }
+    $('composePanel').classList.remove('hidden');
+    $('missing').textContent = d.labeled + ' Glyphen gespeichert. Text eingeben und exportieren!';
+    updatePreview();
+  });
+};
+
+function currentSettings() {
+  return {
+    session,
+    text: $('text').value,
+    size: +$('size').value,
+    spacing: +$('spacing').value,
+    line_spacing: +$('line_spacing').value,
+  };
+}
+
+function updatePreview() {}
+
+$('composeBtn').onclick = () => {
+  fetch('/compose', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(currentSettings())
+  }).then(r => {
+    if (!r.ok) return r.json().then(d => { throw new Error(d.error || 'Export fehlgeschlagen'); });
+    return r.blob();
+  }).then(blob => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'text.svg';
+    a.click();
+  }).catch(e => { $('missing').textContent = e.message; });
+};
+
+$('fontBtn').onclick = () => {
+  fetch('/font_svg', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({session})
+  }).then(r => {
+    if (!r.ok) return r.json().then(d => { throw new Error(d.error); });
+    return r.blob();
+  }).then(blob => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'glyphs.svg';
+    a.click();
+  }).catch(e => $('missing').textContent = e.message);
+};
+</script>
+</body>
+</html>
