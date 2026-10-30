@@ -18,6 +18,9 @@ button { background:var(--acc); color:#0b1220; border:none; border-radius:8px; p
 button.sec { background:#2a2e35; color:var(--txt); }
 button:disabled { opacity:.4; cursor:default; }
 #dropzone { border:2px dashed #444; border-radius:12px; padding:30px; text-align:center; color:#9aa0a6; cursor:pointer; }
+#cropWrap { position:relative; margin-top:14px; display:none; }
+#cropImg { width:100%; display:block; border-radius:8px; }
+#cropBox { position:absolute; border:2px dashed var(--acc); background:rgba(77,163,255,.15); cursor:move; }
 #dropzone.drag { border-color:var(--acc); color:var(--acc); }
 #glyphs { display:flex; flex-wrap:wrap; gap:10px; margin-top:14px; }
 .glyph { background:#2a2e35; border-radius:8px; padding:6px; text-align:center; width:92px; }
@@ -36,6 +39,11 @@ textarea { width:100%; min-height:70px; background:#14161a; color:var(--txt); bo
 <div class="panel">
   <div id="dropzone">📷 Foto hierher ziehen oder klicken (JPG/PNG)</div>
   <input type="file" id="file" accept="image/*" class="hidden">
+  <div id="cropWrap">
+    <p style="font-size:13px;color:#9aa0a6;margin:0 0 6px;">Zuschneiden: Rahmen um die Schrift ziehen, dann „Neu analysieren".<br>Der Rahmen kann verschoben und an den Griffen in der Ecke in der Größe geändert werden.</p>
+    <img id="cropImg">
+    <div id="cropBox"></div>
+  </div>
   <div class="row">
     <div>
       <label>Kantenschärfe (Blockgröße): <span id="v_bs">31</span></label>
@@ -111,9 +119,67 @@ drop.ondrop = e => {
   if (e.dataTransfer.files[0]) handle(e.dataTransfer.files[0]);
 };
 
+let cropRect = null;
+let naturalW = 1, naturalH = 1;
+
 function handle(file) {
   lastFile = file;
   analyze(file);
+}
+
+function initCrop(imgUrl, dispW, dispH, natW, natH) {
+  const wrap = $('cropWrap'), cimg = $('cropImg'), box = $('cropBox');
+  wrap.style.display = 'block';
+  cimg.src = imgUrl;
+  naturalW = natW; naturalH = natH;
+  cimg.onload = () => {
+    const r = cimg.getBoundingClientRect();
+    box.style.left = '10px'; box.style.top = '10px';
+    box.style.width = (r.width - 20) + 'px';
+    box.style.height = (r.height - 20) + 'px';
+    updateCropRect();
+  };
+  box.onmousedown = e => {
+    e.preventDefault();
+    const r = cimg.getBoundingClientRect();
+    const sx = e.clientX, sy = e.clientY;
+    const ox = box.offsetLeft, oy = box.offsetTop;
+    const grab = e.target.dataset.grab;
+    const move = ev => {
+      const dx = ev.clientX - sx, dy = ev.clientY - sy;
+      if (grab) {
+        let L = box.offsetLeft, T = box.offsetTop, W = box.offsetWidth, H = box.offsetHeight;
+        if (grab.includes('e')) W = Math.max(10, box.offsetWidth + dx);
+        if (grab.includes('s')) H = Math.max(10, box.offsetHeight + dy);
+        if (grab.includes('w')) { L = Math.max(0, ox + dx); W = box.offsetWidth + (ox - L); }
+        if (grab.includes('n')) { T = Math.max(0, oy + dy); H = box.offsetHeight + (oy - T); }
+        box.style.left = L + 'px'; box.style.top = T + 'px';
+        box.style.width = W + 'px'; box.style.height = H + 'px';
+      } else {
+        box.style.left = Math.max(0, Math.min(r.width - box.offsetWidth, ox + dx)) + 'px';
+        box.style.top = Math.max(0, Math.min(r.height - box.offsetHeight, oy + dy)) + 'px';
+      }
+      updateCropRect();
+    };
+    const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); };
+    document.addEventListener('mousemove', move);
+    document.addEventListener('mouseup', up);
+  };
+  box.innerHTML = ['nw','ne','sw','se'].map(g =>
+    `<div data-grab="${g}" style="position:absolute;width:10px;height:10px;background:var(--acc);
+      ${g[0]==='n'?'top:-5px':'bottom:-5px'};${g[1]==='e'?'right:-5px':'left:-5px'};cursor:${g}-resize"></div>`).join('');
+}
+
+function updateCropRect() {
+  const cimg = $('cropImg'), box = $('cropBox');
+  const r = cimg.getBoundingClientRect();
+  const scaleX = naturalW / r.width, scaleY = naturalH / r.height;
+  cropRect = [
+    Math.round(box.offsetLeft * scaleX),
+    Math.round(box.offsetTop * scaleY),
+    Math.round(box.offsetWidth * scaleX),
+    Math.round(box.offsetHeight * scaleY)
+  ];
 }
 
 function analyze(file) {
@@ -123,12 +189,14 @@ function analyze(file) {
   fd.append('image', file);
   ranges.forEach(r => fd.append(r, $(r).value));
   if ($('invert').checked) fd.append('invert', 'on');
+  if (cropRect) fd.append('crop', cropRect.join(','));
   fetch('/upload', {method:'POST', body:fd})
     .then(r => r.json())
     .then(d => {
       if (d.error) { $('status').textContent = d.error; $('status').classList.add('err'); return; }
       session = d.session;
       $('status').textContent = d.count + ' Formen erkannt.';
+      initCrop(d.full, 0, 0, d.fullW, d.fullH);
       $('reanalyze').disabled = false;
       renderGlyphs(d.glyphs);
     })

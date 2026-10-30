@@ -33,6 +33,8 @@ def _binarize(img_bgr, blocksize, c, invert=False):
     gray = cv2.medianBlur(gray, 3)
     bs = max(3, int(blocksize) // 2 * 2 + 1)
     # pixels > (local mean - c) become white (letters)
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+    gray = clahe.apply(gray)
     if invert:
         binary = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
                                        cv2.THRESH_BINARY, bs, float(c))
@@ -201,6 +203,13 @@ def upload():
         "blocksize": 31, "c": 10, "epsilon": 0.002, "gap_ratio": 0.05,
         "min_area": 40}.items()}
     invert = request.form.get("invert") in ("on", "1", "true")
+    crop = request.form.get("crop")  # "x,y,w,h" in original image coords
+    if crop:
+        try:
+            cx, cy, cw, ch = [int(float(v)) for v in crop.split(",")]
+            img = img[max(0, cy):cy + ch, max(0, cx):cx + cw]
+        except ValueError:
+            pass
     glyphs, binary = _extract_glyphs(
         img, int(params["blocksize"]), params["c"], params["epsilon"],
         params["gap_ratio"], int(params["min_area"]), invert)
@@ -208,8 +217,13 @@ def upload():
     SESSIONS[sid] = {"glyphs": glyphs, "labels": {}}
     for g in glyphs:
         g["preview"] = _glyph_preview_png(binary, g)
+    ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 80])
+    full_preview = "data:image/jpeg;base64," + base64.b64encode(buf).decode()
     return jsonify({
         "session": sid,
+        "full": full_preview,
+        "fullW": int(img.shape[1]),
+        "fullH": int(img.shape[0]),
         "count": len(glyphs),
         "glyphs": [
             {"id": g["id"], "preview": g["preview"], "w": g["w"], "h": g["h"]}

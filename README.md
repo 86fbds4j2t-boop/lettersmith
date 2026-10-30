@@ -37,6 +37,12 @@ Dann im Browser öffnen: http://127.0.0.1:5000
 2. **Glyphen beschriften**: unter jede erkannte Form den Buchstaben eintragen.
    Fehlende Buchstaben im Zieltext werden übersprungen (Meldung siehe Export).
    Optional eine Form mit `space` beschriften für echte Leerzeichenbreiten.
+**Tipp: Textbereich zuschneiden.** Nach dem Hochladen erscheint das Bild mit
+einem blauen Rahmen. Ziehe diesen Rahmen eng um die Schrift (er lässt sich
+verschieben und an den Ecken verkleinern) und klicke „Neu analysieren".
+Bei strukturiertem Grund (Granit, Holz, Tapete) reduziert das die
+Fehlformen drastisch, weil die Analyse nur noch im Rahmen läuft.
+
 **Helle Schrift auf dunklem Grund** (z. B. gravierte Buchstaben in Stein,
 Drahtbuchstaben vor dunkler Wand): das Häkchen „Helle Schrift auf dunklem
 Grund" setzen. Bei grobkörnigem Material (Granit o. Ä.) hilft zusätzlich:
