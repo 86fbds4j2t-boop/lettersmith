@@ -6,8 +6,22 @@ zusammengesetzt – direkt in Affinity Designer 2 öffnen und weiterbearbeiten.
 
 ## Start
 
+**macOS / Linux:**
+
     pip install -r requirements.txt
     python3 app.py
+
+**Windows (Eingabeaufforderung / PowerShell):**
+
+    py -m pip install -r requirements.txt
+    py app.py
+
+Auf Windows heißt der Befehl `py` (oder `python`), nicht `python3`.
+Die Abhängigkeiten müssen einmalig installiert werden – der Fehler
+`ModuleNotFoundError: No module named 'cv2'` bedeutet, dass dieser
+Schritt noch fehlt oder pip in einen anderen Python installiert hat.
+Falls `py` nicht existiert: Python von python.org installieren und
+beim Installer "Add python.exe to PATH" aktivieren.
 
 Dann im Browser öffnen: http://127.0.0.1:5000
 
