@@ -18,9 +18,19 @@ button { background:var(--acc); color:#0b1220; border:none; border-radius:8px; p
 button.sec { background:#2a2e35; color:var(--txt); }
 button:disabled { opacity:.4; cursor:default; }
 #dropzone { border:2px dashed #444; border-radius:12px; padding:30px; text-align:center; color:#9aa0a6; cursor:pointer; }
-#cropWrap { position:relative; margin-top:14px; display:none; }
+#cropWrap { position:relative; margin-top:14px; display:none; user-select:none; }
 #cropImg { width:100%; display:block; border-radius:8px; }
-#cropBox { position:absolute; border:2px dashed var(--acc); background:rgba(77,163,255,.15); cursor:move; }
+#cropBox { position:absolute; border:2px solid var(--acc); background:rgba(77,163,255,.15); cursor:move; touch-action:none; }
+#cropBox .handle { position:absolute; width:12px; height:12px; background:#fff; border:2px solid var(--acc); border-radius:2px; }
+#cropBox .h-nw { top:-6px; left:-6px; cursor:nwse-resize; }
+#cropBox .h-ne { top:-6px; right:-6px; cursor:nesw-resize; }
+#cropBox .h-sw { bottom:-6px; left:-6px; cursor:nesw-resize; }
+#cropBox .h-se { bottom:-6px; right:-6px; cursor:nwse-resize; }
+#cropBox .h-n { top:-6px; left:50%; margin-left:-6px; cursor:ns-resize; }
+#cropBox .h-s { bottom:-6px; left:50%; margin-left:-6px; cursor:ns-resize; }
+#cropBox .h-w { top:50%; left:-6px; margin-top:-6px; cursor:ew-resize; }
+#cropBox .h-e { top:50%; right:-6px; margin-top:-6px; cursor:ew-resize; }
+#cropBox .reset { position:absolute; top:8px; right:8px; background:#2a2e35; color:var(--txt); border:1px solid #444; border-radius:6px; padding:4px 10px; font-size:12px; cursor:pointer; }
 #dropzone.drag { border-color:var(--acc); color:var(--acc); }
 #glyphs { display:flex; flex-wrap:wrap; gap:10px; margin-top:14px; }
 .glyph { background:#2a2e35; border-radius:8px; padding:6px; text-align:center; width:92px; }
@@ -40,9 +50,18 @@ textarea { width:100%; min-height:70px; background:#14161a; color:var(--txt); bo
   <div id="dropzone">📷 Foto hierher ziehen oder klicken (JPG/PNG)</div>
   <input type="file" id="file" accept="image/*" class="hidden">
   <div id="cropWrap">
-    <p style="font-size:13px;color:#9aa0a6;margin:0 0 6px;">Zuschneiden: Rahmen um die Schrift ziehen, dann „Neu analysieren".<br>Der Rahmen kann verschoben und an den Griffen in der Ecke in der Größe geändert werden.</p>
-    <img id="cropImg">
-    <div id="cropBox"></div>
+    <p style="font-size:13px;color:#9aa0a6;margin:0 0 6px;">Rahmen aufziehen: Mit gedrückter Maustaste (oder Finger) direkt ins Bild zeichnen, um einen Bereich aufzuziehen. Zum Verschieben in den Rahmen klicken, an den weißen Griffen in der Größe ändern. Der Rahmen bleibt über wiederholtes „Neu analysieren" gespeichert.</p>
+    <div id="cropCanvas" style="position:relative;overflow:hidden;border-radius:8px;">
+      <img id="cropImg" style="width:100%;display:block;" draggable="false">
+      <div id="cropDraw" style="position:absolute;inset:0;cursor:crosshair;touch-action:none;"></div>
+      <div id="cropBox" class="hidden">
+        <div class="handle h-nw" data-g="nw"></div><div class="handle h-ne" data-g="ne"></div>
+        <div class="handle h-sw" data-g="sw"></div><div class="handle h-se" data-g="se"></div>
+        <div class="handle h-n" data-g="n"></div><div class="handle h-s" data-g="s"></div>
+        <div class="handle h-w" data-g="w"></div><div class="handle h-e" data-g="e"></div>
+        <div class="reset" id="cropReset">Rahmen löschen</div>
+      </div>
+    </div>
   </div>
   <div class="row">
     <div>
@@ -119,7 +138,7 @@ drop.ondrop = e => {
   if (e.dataTransfer.files[0]) handle(e.dataTransfer.files[0]);
 };
 
-let cropRect = null;
+let cropRect = null;        // [x,y,w,h] in Original-Pixel-Koordinaten oder null
 let naturalW = 1, naturalH = 1;
 
 function handle(file) {
@@ -127,59 +146,134 @@ function handle(file) {
   analyze(file);
 }
 
-function initCrop(imgUrl, dispW, dispH, natW, natH) {
-  const wrap = $('cropWrap'), cimg = $('cropImg'), box = $('cropBox');
-  wrap.style.display = 'block';
-  cimg.src = imgUrl;
-  naturalW = natW; naturalH = natH;
-  cimg.onload = () => {
-    const r = cimg.getBoundingClientRect();
-    box.style.left = '10px'; box.style.top = '10px';
-    box.style.width = (r.width - 20) + 'px';
-    box.style.height = (r.height - 20) + 'px';
-    updateCropRect();
-  };
-  box.onmousedown = e => {
-    e.preventDefault();
-    const r = cimg.getBoundingClientRect();
-    const sx = e.clientX, sy = e.clientY;
-    const ox = box.offsetLeft, oy = box.offsetTop;
-    const grab = e.target.dataset.grab;
-    const move = ev => {
-      const dx = ev.clientX - sx, dy = ev.clientY - sy;
-      if (grab) {
-        let L = box.offsetLeft, T = box.offsetTop, W = box.offsetWidth, H = box.offsetHeight;
-        if (grab.includes('e')) W = Math.max(10, box.offsetWidth + dx);
-        if (grab.includes('s')) H = Math.max(10, box.offsetHeight + dy);
-        if (grab.includes('w')) { L = Math.max(0, ox + dx); W = box.offsetWidth + (ox - L); }
-        if (grab.includes('n')) { T = Math.max(0, oy + dy); H = box.offsetHeight + (oy - T); }
-        box.style.left = L + 'px'; box.style.top = T + 'px';
-        box.style.width = W + 'px'; box.style.height = H + 'px';
-      } else {
-        box.style.left = Math.max(0, Math.min(r.width - box.offsetWidth, ox + dx)) + 'px';
-        box.style.top = Math.max(0, Math.min(r.height - box.offsetHeight, oy + dy)) + 'px';
-      }
-      updateCropRect();
-    };
-    const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); };
-    document.addEventListener('mousemove', move);
-    document.addEventListener('mouseup', up);
-  };
-  box.innerHTML = ['nw','ne','sw','se'].map(g =>
-    `<div data-grab="${g}" style="position:absolute;width:10px;height:10px;background:var(--acc);
-      ${g[0]==='n'?'top:-5px':'bottom:-5px'};${g[1]==='e'?'right:-5px':'left:-5px'};cursor:${g}-resize"></div>`).join('');
+const cropEls = () => ({ canvas: $('cropCanvas'), img: $('cropImg'),
+  draw: $('cropDraw'), box: $('cropBox'), wrap: $('cropWrap') });
+
+function imgRect() { return cropEls().img.getBoundingClientRect(); }
+
+function pxToOrig(box) {
+  const r = imgRect();
+  return [
+    Math.max(0, Math.round(box.l / r.width * naturalW)),
+    Math.max(0, Math.round(box.t / r.height * naturalH)),
+    Math.min(naturalW, Math.max(1, Math.round(box.w / r.width * naturalW))),
+    Math.min(naturalH, Math.max(1, Math.round(box.h / r.height * naturalH)))
+  ];
 }
 
-function updateCropRect() {
-  const cimg = $('cropImg'), box = $('cropBox');
-  const r = cimg.getBoundingClientRect();
-  const scaleX = naturalW / r.width, scaleY = naturalH / r.height;
-  cropRect = [
-    Math.round(box.offsetLeft * scaleX),
-    Math.round(box.offsetTop * scaleY),
-    Math.round(box.offsetWidth * scaleX),
-    Math.round(box.offsetHeight * scaleY)
-  ];
+function origToPx(rect) {
+  const r = imgRect();
+  return { l: rect[0] / naturalW * r.width, t: rect[1] / naturalH * r.height,
+           w: rect[2] / naturalW * r.width, h: rect[3] / naturalH * r.height };
+}
+
+function setBoxStyle(b) {
+  const { box } = cropEls();
+  box.style.left = b.l + 'px'; box.style.top = b.t + 'px';
+  box.style.width = b.w + 'px'; box.style.height = b.h + 'px';
+}
+
+function clampBox(b) {
+  const r = imgRect();
+  b.w = Math.min(b.w, r.width); b.h = Math.min(b.h, r.height);
+  b.l = Math.max(0, Math.min(b.l, r.width - b.w));
+  b.t = Math.max(0, Math.min(b.t, r.height - b.h));
+  return b;
+}
+
+function storeRect() {
+  const { box } = cropEls();
+  const r = imgRect();
+  cropRect = pxToOrig({ l: box.offsetLeft, t: box.offsetTop,
+    w: box.offsetWidth, h: box.offsetHeight });
+}
+
+function pointIn(el, ev) {
+  const r = el.getBoundingClientRect();
+  return [ (ev.clientX - r.left), (ev.clientY - r.top) ];
+}
+
+function initCrop(imgUrl, natW, natH) {
+  const { wrap, img, draw, box } = cropEls();
+  wrap.style.display = 'block';
+  naturalW = natW; naturalH = natH;
+  img.src = imgUrl;
+  img.onload = () => { if (cropRect) showBox(origToPx(cropRect)); };
+
+  // Aufziehen: neues Rechteck zeichnen
+  draw.onpointerdown = ev => {
+    if (!ev.isPrimary) return;
+    ev.preventDefault();
+    const [px, py] = pointIn(img, ev);
+    let cur = null;
+    const move = m => {
+      if (!m.isPrimary) return;
+      const [x, y] = pointIn(img, m);
+      cur = clampBox({ l: Math.min(px, x), t: Math.min(py, y),
+                       w: Math.abs(x - px), h: Math.abs(y - py) });
+      showBox(cur);
+    };
+    const up = () => {
+      draw.releasePointerCapture(ev.pointerId);
+      draw.removeEventListener('pointermove', move);
+      draw.removeEventListener('pointerup', up);
+      if (cur && cur.w > 8 && cur.h > 8) {
+        setBoxStyle(cur); storeRect();
+      } else { cropRect = null; box.classList.add('hidden'); }
+    };
+    draw.setPointerCapture(ev.pointerId);
+    draw.addEventListener('pointermove', move);
+    draw.addEventListener('pointerup', up);
+  };
+
+  // Verschieben / Größe ändern am bestehenden Rahmen
+  box.onpointerdown = ev => {
+    if (ev.target.classList.contains('reset')) return;
+    ev.preventDefault();
+    const r = imgRect();
+    const startX = ev.clientX, startY = ev.clientY;
+    const b0 = { l: box.offsetLeft, t: box.offsetTop,
+                 w: box.offsetWidth, h: box.offsetHeight };
+    const g = ev.target.dataset.g || 'move';
+    box.setPointerCapture(ev.pointerId);
+    const move = m => {
+      const dx = m.clientX - startX, dy = m.clientY - startY;
+      let b = { ...b0 };
+      if (g === 'move') { b.l = b0.l + dx; b.t = b0.t + dy; }
+      else {
+        if (g.includes('w')) { b.l = b0.l + dx; b.w = b0.w - dx; }
+        if (g.includes('e')) { b.w = b0.w + dx; }
+        if (g.includes('n')) { b.t = b0.t + dy; b.h = b0.h - dy; }
+        if (g.includes('s')) { b.h = b0.h + dy; }
+        if (b.w < 10) { b.w = 10; }
+        if (b.h < 10) { b.h = 10; }
+      }
+      setBoxStyle(clampBox(b));
+      storeRect();
+    };
+    const up = () => {
+      box.removeEventListener('pointermove', move);
+      box.removeEventListener('pointerup', up);
+      storeRect();
+    };
+    box.addEventListener('pointermove', move);
+    box.addEventListener('pointerup', up);
+  };
+
+  box.querySelector('.reset').onclick = e => {
+    e.stopPropagation();
+    cropRect = null;
+    box.classList.add('hidden');
+  };
+
+  // Bei Fenster-Resize Rahmen mitbewegen
+  window.onresize = () => { if (cropRect) showBox(origToPx(cropRect)); };
+}
+
+function showBox(b) {
+  const { box } = cropEls();
+  box.classList.remove('hidden');
+  setBoxStyle(b);
 }
 
 function analyze(file) {
@@ -196,7 +290,7 @@ function analyze(file) {
       if (d.error) { $('status').textContent = d.error; $('status').classList.add('err'); return; }
       session = d.session;
       $('status').textContent = d.count + ' Formen erkannt.';
-      initCrop(d.full, 0, 0, d.fullW, d.fullH);
+      initCrop(d.full, d.fullW, d.fullH);
       $('reanalyze').disabled = false;
       renderGlyphs(d.glyphs);
     })

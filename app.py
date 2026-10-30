@@ -196,9 +196,7 @@ def upload():
     img = cv2.imdecode(data, cv2.IMREAD_COLOR)
     if img is None:
         return jsonify({"error": "Bild konnte nicht gelesen werden"}), 400
-    if max(img.shape[:2]) > 2200:
-        scale = 2200 / max(img.shape[:2])
-        img = cv2.resize(img, None, fx=scale, fy=scale)
+    orig = img
     params = {k: float(request.form.get(k, v)) for k, v in {
         "blocksize": 31, "c": 10, "epsilon": 0.002, "gap_ratio": 0.05,
         "min_area": 40}.items()}
@@ -210,6 +208,9 @@ def upload():
             img = img[max(0, cy):cy + ch, max(0, cx):cx + cw]
         except ValueError:
             pass
+    if max(img.shape[:2]) > 2200:
+        scale = 2200 / max(img.shape[:2])
+        img = cv2.resize(img, None, fx=scale, fy=scale)
     glyphs, binary = _extract_glyphs(
         img, int(params["blocksize"]), params["c"], params["epsilon"],
         params["gap_ratio"], int(params["min_area"]), invert)
@@ -217,13 +218,13 @@ def upload():
     SESSIONS[sid] = {"glyphs": glyphs, "labels": {}}
     for g in glyphs:
         g["preview"] = _glyph_preview_png(binary, g)
-    ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 80])
+    ok, buf = cv2.imencode(".jpg", orig, [cv2.IMWRITE_JPEG_QUALITY, 85])
     full_preview = "data:image/jpeg;base64," + base64.b64encode(buf).decode()
     return jsonify({
         "session": sid,
         "full": full_preview,
-        "fullW": int(img.shape[1]),
-        "fullH": int(img.shape[0]),
+        "fullW": int(orig.shape[1]),
+        "fullH": int(orig.shape[0]),
         "count": len(glyphs),
         "glyphs": [
             {"id": g["id"], "preview": g["preview"], "w": g["w"], "h": g["h"]}
